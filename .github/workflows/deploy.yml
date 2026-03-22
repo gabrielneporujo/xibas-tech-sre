@@ -1,0 +1,32 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Login no GHCR
+        run: echo "${{ secrets.GHCR_TOKEN }}" | docker login ghcr.io -u ${{ secrets.GHCR_USERNAME }} --password-stdin
+
+      - name: Build da imagem
+        run: docker build -t ghcr.io/${{ secrets.GHCR_USERNAME }}/xibas-tech-sre:${{ github.sha }} .
+
+      - name: Push para GHCR
+        run: docker push ghcr.io/${{ secrets.GHCR_USERNAME }}/xibas-tech-sre:${{ github.sha }}
+
+      - name: Deploy no Kubernetes
+        run: |
+          kubectl set image deployment/fastapi fastapi=ghcr.io/${{ secrets.GHCR_USERNAME }}/xibas-tech-sre:${{ github.sha }}
+          kubectl rollout status deployment/fastapi --timeout=60s
+
+      - name: Rollback se falhar
+        if: failure()
+        run: kubectl rollout undo deployment/fastapi
